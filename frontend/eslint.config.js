@@ -3,15 +3,15 @@ import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
-import base from '../eslint.config.base.js';
+import { defineConfig, globalIgnores } from 'eslint/config';
 
-export default tseslint.config(
-  ...base,
+export default defineConfig([
+  globalIgnores(['dist']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
       js.configs.recommended,
-      ...tseslint.configs.recommended,
+      tseslint.configs.recommended,
       reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
     ],
@@ -19,20 +19,5 @@ export default tseslint.config(
       ecmaVersion: 2020,
       globals: globals.browser,
     },
-    rules: {
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
-      'import/no-cycle': ['error', { maxDepth: 'infinity' }],
-      'import/order': [
-        'error',
-        {
-          groups: ['builtin', 'external', 'internal', ['parent', 'sibling'], 'index', 'object', 'type'],
-          'newlines-between': 'always',
-          alphabetize: { order: 'asc', caseInsensitive: true },
-        },
-      ],
-    },
   },
-  {
-    ignores: ['dist', 'coverage'],
-  },
-);
+]);

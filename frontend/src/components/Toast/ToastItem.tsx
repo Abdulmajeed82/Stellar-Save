@@ -1,12 +1,10 @@
-import React, { useCallback, useEffect, useRef } from 'react';
-import {
-  Alert,
-  AlertTitle,
-  Box,
-  Button,
-  Stack,
-  keyframes,
-} from '@mui/material';
+import React, { useEffect, useRef } from 'react';
+import { Alert, AlertTitle, Box, Button, Stack, keyframes } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import WarningIcon from '@mui/icons-material/Warning';
+import InfoIcon from '@mui/icons-material/Info';
 import type { Toast } from './types';
 
 const slideIn = keyframes`
@@ -36,59 +34,20 @@ interface ToastItemProps {
   onClose: (id: string) => void;
 }
 
-const iconStylesByType = {
-  success: { color: '#10b981', symbol: '✓' },
-  error: { color: '#ef4444', symbol: '!' },
-  warning: { color: '#f59e0b', symbol: '!' },
-  info: { color: '#3b82f6', symbol: 'i' },
-} as const;
-
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose }) => {
+  const toastRef = useRef<HTMLDivElement>(null);
   const [isExiting, setIsExiting] = React.useState(false);
-  const isClosedRef = useRef(false);
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearTimers = useCallback(() => {
-    if (dismissTimerRef.current) {
-      clearTimeout(dismissTimerRef.current);
-      dismissTimerRef.current = null;
-    }
-
-    if (exitTimerRef.current) {
-      clearTimeout(exitTimerRef.current);
-      exitTimerRef.current = null;
-    }
-  }, []);
-
-  const handleClose = useCallback(() => {
-    if (isClosedRef.current) {
-      return;
-    }
-
-    isClosedRef.current = true;
-    clearTimers();
-    setIsExiting(true);
-
-    exitTimerRef.current = setTimeout(() => {
-      onClose(toast.id);
-      toast.onClose?.();
-      exitTimerRef.current = null;
-    }, 300);
-  }, [clearTimers, onClose, toast]);
 
   // Auto-dismiss timer
   useEffect(() => {
     if (toast.duration && toast.duration > 0) {
-      dismissTimerRef.current = setTimeout(() => {
+      const timer = setTimeout(() => {
         handleClose();
       }, toast.duration);
-    }
 
-    return () => {
-      clearTimers();
-    };
-  }, [clearTimers, handleClose, toast.duration]);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.id, toast.duration]);
 
   const handleActionClick = () => {
     if (toast.action) {
@@ -96,42 +55,47 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose }) => {
     }
   };
 
-  const getIcon = () => {
-    const icon = iconStylesByType[toast.type];
+  const handleClose = () => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onClose(toast.id);
+      if (toast.onClose) {
+        toast.onClose();
+      }
+    }, 300);
+  };
 
-    return (
-      <Box
-        aria-hidden="true"
-        sx={{
-          width: 20,
-          height: 20,
-          borderRadius: '50%',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '0.875rem',
-          fontWeight: 700,
-          color: icon.color,
-          border: `1px solid ${icon.color}`,
-          lineHeight: 1,
-        }}
-      >
-        {icon.symbol}
-      </Box>
-    );
+  const getIcon = () => {
+    switch (toast.type) {
+      case 'success':
+        return <CheckCircleIcon sx={{ color: '#10b981' }} />;
+      case 'error':
+        return <ErrorIcon sx={{ color: '#ef4444' }} />;
+      case 'warning':
+        return <WarningIcon sx={{ color: '#f59e0b' }} />;
+      case 'info':
+        return <InfoIcon sx={{ color: '#3b82f6' }} />;
+    }
   };
 
   return (
     <Box
+      ref={toastRef}
       sx={{
-        animation: isExiting
-          ? `${slideOut} 0.3s ease-in-out forwards`
-          : `${slideIn} 0.3s ease-out`,
+        animation: isExiting ? `${slideOut} 0.3s ease-in-out forwards` : `${slideIn} 0.3s ease-out`,
       }}
     >
       <Alert
         icon={getIcon()}
-        severity={toast.type === 'success' ? 'success' : toast.type === 'error' ? 'error' : toast.type === 'warning' ? 'warning' : 'info'}
+        severity={
+          toast.type === 'success'
+            ? 'success'
+            : toast.type === 'error'
+              ? 'error'
+              : toast.type === 'warning'
+                ? 'warning'
+                : 'info'
+        }
         sx={{
           minWidth: '300px',
           maxWidth: '400px',
@@ -175,9 +139,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose }) => {
               }}
               aria-label="Dismiss notification"
             >
-              <Box component="span" aria-hidden="true" sx={{ fontSize: '1rem', lineHeight: 1 }}>
-                ×
-              </Box>
+              <CloseIcon fontSize="small" />
             </Box>
           </Stack>
         }

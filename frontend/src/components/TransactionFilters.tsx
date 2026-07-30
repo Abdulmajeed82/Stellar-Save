@@ -29,13 +29,6 @@ const TransactionFilters: React.FC<Props> = ({ filters, onChange }) => {
     onChange({ ...filters, status: newStatuses });
   };
 
-  const handleFilterKeyDown = (e: React.KeyboardEvent, handler: () => void) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handler();
-    }
-  };
-
   return (
     <div className="flex flex-wrap gap-4 bg-gray-900 p-4 rounded-xl border border-gray-800">
       <div>
@@ -44,19 +37,8 @@ const TransactionFilters: React.FC<Props> = ({ filters, onChange }) => {
           {types.map((t) => {
             const isActive = filters.type?.includes(t) || false;
             return (
-              <div
-                key={t}
-                onClick={() => toggleType(t)}
-                onKeyDown={(e) => handleFilterKeyDown(e, () => toggleType(t))}
-                className="cursor-pointer"
-                role="button"
-                tabIndex={0}
-                aria-pressed={isActive}
-                aria-label={`Filter by type ${t}${isActive ? ', active' : ''}`}
-              >
-                <Badge variant={isActive ? 'primary' : 'secondary'}>
-                  {t}
-                </Badge>
+              <div key={t} onClick={() => toggleType(t)} className="cursor-pointer">
+                <Badge variant={isActive ? 'primary' : 'secondary'}>{t}</Badge>
               </div>
             );
           })}
@@ -69,19 +51,8 @@ const TransactionFilters: React.FC<Props> = ({ filters, onChange }) => {
           {statuses.map((s) => {
             const isActive = filters.status?.includes(s) || false;
             return (
-              <div
-                key={s}
-                onClick={() => toggleStatus(s)}
-                onKeyDown={(e) => handleFilterKeyDown(e, () => toggleStatus(s))}
-                className="cursor-pointer"
-                role="button"
-                tabIndex={0}
-                aria-pressed={isActive}
-                aria-label={`Filter by status ${s}${isActive ? ', active' : ''}`}
-              >
-                <Badge variant={isActive ? 'success' : 'secondary'}>
-                  {s}
-                </Badge>
+              <div key={s} onClick={() => toggleStatus(s)} className="cursor-pointer">
+                <Badge variant={isActive ? 'success' : 'secondary'}>{s}</Badge>
               </div>
             );
           })}

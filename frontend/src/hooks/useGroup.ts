@@ -1,64 +1,132 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchGroup } from '../utils/groupApi';
-import { queryKeys } from '../lib/queryKeys';
-import { STALE_TIME } from '../lib/queryClient';
-import type { DetailedGroup } from '../utils/groupApi';
+import type { GroupDetail, UseGroupReturn } from '../types/group';
 
-export interface UseGroupReturn {
-  /** Full group detail, null while loading or on error */
-  group: DetailedGroup | null;
-  /** True during the initial fetch or a manual refresh */
-  isLoading: boolean;
-  /** Error message, null when no error */
-  error: string | null;
-  /** Manually re-fetch (busts cache) */
-  refresh: () => void;
+// ─── Cache ────────────────────────────────────────────────────────────────────
+
+interface CacheEntry {
+  data: GroupDetail;
+  fetchedAt: number;
+}
+
+const CACHE_TTL_MS = 60_000; // 1 minute
+const AUTO_REFRESH_MS = 30_000; // poll every 30 s while the hook is mounted
+const cache = new Map<string, CacheEntry>();
+
+function getFromCache(id: string): GroupDetail | null {
+  const entry = cache.get(id);
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) {
+    cache.delete(id);
+    return null;
+  }
+  return entry.data;
+}
+
+function setInCache(id: string, data: GroupDetail): void {
+  cache.set(id, { data, fetchedAt: Date.now() });
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+interface UseGroupOptions {
+  /** Disable the auto-refresh interval (default: enabled) */
+  autoRefresh?: boolean;
+  /** Override the auto-refresh interval in ms (default: 30 000) */
+  refreshInterval?: number;
 }
 
 /**
- * Fetches a single group by ID — the single source of truth for group
- * detail data. Shares the React Query cache with `useGroups()` via the
- * `queryKeys.groups` factory, so components rendering the same group
- * (e.g. GroupDetailPage + GroupCard hover-prefetch) reuse one cache entry
- * instead of issuing redundant network calls.
+ * Fetches and manages a single group by ID.
  *
- * staleTime: 30_000 — group state (member count, status, config) changes
- * infrequently, so we avoid redundant RPC calls for 30 seconds.
+ * Features:
+ * - In-memory cache with 1-minute TTL to avoid redundant network calls
+ * - Stale-response guard via fetch-ID tracking
+ * - Configurable auto-refresh interval (default 30 s)
+ * - Manual `refresh()` that busts the cache
+ * - Graceful loading / error states
+ *
+ * @param groupId - The group ID to fetch. Pass `null` / `undefined` to skip fetching.
  */
 export function useGroup(
   groupId: string | null | undefined,
+  options: UseGroupOptions = {}
 ): UseGroupReturn {
-  const queryClient = useQueryClient();
+  const { autoRefresh = true, refreshInterval = AUTO_REFRESH_MS } = options;
 
-  const { data: group = null, isLoading, error } = useQuery<DetailedGroup | null, Error>({
-    queryKey: queryKeys.groups.detail(groupId ?? ''),
-    queryFn: () => fetchGroup(groupId!),
-    enabled: Boolean(groupId),
-    staleTime: STALE_TIME.GROUP_STATE,
-  });
+  const [group, setGroup] = useState<GroupDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const refresh = () => {
-    if (groupId) {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.groups.detail(groupId) });
+  // Tracks the latest in-flight fetch so stale responses are silently dropped
+  const fetchIdRef = useRef(0);
+
+  const load = useCallback(async (id: string, bust = false) => {
+    const fetchId = ++fetchIdRef.current;
+
+    if (!bust) {
+      const cached = getFromCache(id);
+      if (cached) {
+        setGroup(cached);
+        setError(null);
+        return;
+      }
     }
-  };
 
-  return {
-    group,
-    isLoading,
-    error: error?.message ?? null,
-    refresh,
-  };
-}
+    setIsLoading(true);
+    setError(null);
 
-/** Prefetch a group into the cache — call on hover before navigation. */
-export function usePrefetchGroup() {
-  const queryClient = useQueryClient();
-  return (groupId: string) => {
-    void queryClient.prefetchQuery({
-      queryKey: queryKeys.groups.detail(groupId),
-      queryFn: () => fetchGroup(groupId),
-      staleTime: STALE_TIME.GROUP_STATE,
-    });
-  };
+    try {
+      const data = await fetchGroup(id);
+
+      if (fetchId !== fetchIdRef.current) return; // stale — discard
+
+      if (data === null) {
+        setError('Group not found.');
+        setGroup(null);
+      } else {
+        setInCache(id, data);
+        setGroup(data);
+      }
+    } catch (err) {
+      if (fetchId !== fetchIdRef.current) return;
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Failed to load group. Please try again.'
+      );
+    } finally {
+      if (fetchId === fetchIdRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  // Initial fetch + re-fetch when groupId changes
+  useEffect(() => {
+    if (!groupId) {
+      setGroup(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+    void load(groupId);
+  }, [groupId, load]);
+
+  // Auto-refresh on an interval
+  useEffect(() => {
+    if (!autoRefresh || !groupId) return;
+
+    const id = setInterval(() => {
+      void load(groupId, true); // bust cache on each tick
+    }, refreshInterval);
+
+    return () => clearInterval(id);
+  }, [autoRefresh, groupId, load, refreshInterval]);
+
+  const refresh = useCallback(() => {
+    if (groupId) void load(groupId, true);
+  }, [groupId, load]);
+
+  return { group, isLoading, error, refresh };
 }

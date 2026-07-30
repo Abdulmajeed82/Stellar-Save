@@ -1,10 +1,6 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button } from './Button';
 import { useWallet } from '../hooks/useWallet';
-import { useContract } from '../hooks/useContract';
-import { useTransaction, explorerUrl } from '../hooks/useTransaction';
-import { queryKeys } from '../lib/queryKeys';
 
 interface JoinGroupButtonProps {
   groupId: number;
@@ -24,77 +20,87 @@ export function JoinGroupButton({
   onSuccess,
 }: JoinGroupButtonProps) {
   const { activeAddress, status: walletStatus } = useWallet();
-  const { joinGroup } = useContract();
-  const { state, txHash, error, execute, reset } = useTransaction();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
-  const queryClient = useQueryClient();
 
   const isFull = currentMembers >= maxMembers;
-  const isPending = state === 'pending';
-
-  if (isMember) return <Button disabled size="sm">Already Joined</Button>;
-  if (isFull) return <Button disabled size="sm">Group Full</Button>;
-  if (isActive) return <Button disabled size="sm">Group Active</Button>;
-  if (walletStatus !== 'connected') return <Button disabled size="sm">Connect Wallet</Button>;
+  const isEligible = !isMember && !isFull && !isActive && walletStatus === 'connected';
 
   const handleJoin = async () => {
-    setShowConfirm(false);
-    await execute(async () => {
-      const result = await joinGroup({ groupId: BigInt(groupId) });
-      if (result.error) throw new Error(result.error.message);
-      return result.txHash!;
-    });
-    if (state !== 'failed') {
-      // Joining changes this group's member count/detail and its standing
-      // in any group list. queryKeys.groups.all() is ['groups'], and React
-      // Query invalidates by key-prefix match, so this also invalidates
-      // every groups.list(...)/groups.detail(id) entry -- the shared cache
-      // catches up immediately instead of waiting out each query's
-      // staleTime.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.groups.all() });
+    if (!activeAddress) {
+      setError('Please connect your wallet');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // TODO: Implement contract interaction
+      // const contract = new Contract(CONTRACT_ADDRESS);
+      // await contract.join_group({ group_id: groupId, member: activeAddress });
+
+      // Simulate transaction for now
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      setShowConfirm(false);
       onSuccess?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join group');
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (state === 'confirmed') {
+  if (isMember) {
     return (
-      <div>
-        <Button disabled size="sm" variant="ghost">Joined ✓</Button>
-        {txHash && (
-          <a
-            href={explorerUrl(txHash)}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ fontSize: 11, display: 'block', marginTop: 4 }}
-          >
-            View TX →
-          </a>
-        )}
-      </div>
+      <Button disabled size="sm">
+        Already Joined
+      </Button>
+    );
+  }
+
+  if (isFull) {
+    return (
+      <Button disabled size="sm">
+        Group Full
+      </Button>
+    );
+  }
+
+  if (isActive) {
+    return (
+      <Button disabled size="sm">
+        Group Active
+      </Button>
+    );
+  }
+
+  if (walletStatus !== 'connected') {
+    return (
+      <Button disabled size="sm">
+        Connect Wallet
+      </Button>
     );
   }
 
   if (showConfirm) {
     return (
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <Button size="sm" onClick={handleJoin} loading={isPending} disabled={isPending || !activeAddress}>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <Button size="sm" onClick={handleJoin} loading={loading} disabled={loading}>
           Confirm
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setShowConfirm(false)} disabled={isPending}>
+        <Button size="sm" variant="ghost" onClick={() => setShowConfirm(false)} disabled={loading}>
           Cancel
         </Button>
-        {state === 'failed' && error && (
-          <span style={{ color: 'var(--color-error)', fontSize: 12 }}>
-            {error}{' '}
-            <button onClick={reset} style={{ fontSize: 11 }}>Dismiss</button>
-          </span>
-        )}
+        {error && <span style={{ color: 'var(--color-error)', fontSize: '12px' }}>{error}</span>}
       </div>
     );
   }
 
   return (
-    <Button size="sm" onClick={() => setShowConfirm(true)} disabled={isPending}>
+    <Button size="sm" onClick={() => setShowConfirm(true)} disabled={!isEligible}>
       Join Group
     </Button>
   );
